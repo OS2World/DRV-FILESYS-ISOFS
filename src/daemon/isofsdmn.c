@@ -404,9 +404,59 @@ static int getNextRequest(ServerData * pServerData)
 static int signalRequestDone(ServerData * pServerData)
 {
     APIRET rc;
+    PFSREQUEST pRq = pServerData->pRequest;
+    /* Copy what is needed to undo the request before the FSD takes the
+       exchange buffer back. */
+    int savedRq = pRq->rq;
+    APIRET savedRc = pRq->rc;
+    OpenFileData * savedOpenData = NULL;
+    VolData * savedVol = NULL;
+    SearchData * savedSearch = NULL;
+
+    if (savedRc == NO_ERROR)
+    {
+        if (savedRq == FSRQ_OPENCREATE)
+        {
+            savedOpenData = pRq->data.opencreate.pOpenFileData;
+            savedVol = pRq->data.opencreate.pVolData;
+        }
+        else if (savedRq == FSRQ_FINDFIRST)
+        {
+            savedSearch = pRq->data.findfirst.pSearchData;
+            savedVol = pRq->data.findfirst.pVolData;
+        }
+    }
 
     rc = DosFSCtl(NULL, 0, NULL, NULL, 0, NULL, FSCTL_STUBFSD_DONE_REQUEST,
                   (PSZ)IFS_NAME, (HFILE)-1, FSCTL_FSDNAME);
+    if (rc == ERROR_STUBFSD_CALLER_INTERRUPTED)
+    {
+        /* The process that made the request was interrupted (killed or
+           signalled) and never saw the reply: undo what the request
+           created, or the open file / search would stay allocated. */
+        logMsg(L_ERR, "caller interrupted, reply lost (request %d)", (int)savedRq);
+        switch (savedRq)
+        {
+            case FSRQ_OPENCREATE:
+                if (savedRc == NO_ERROR && savedOpenData)
+                {
+                    free(savedOpenData->pIsoEntry);
+                    free(savedOpenData);
+                    savedVol->cOpenFiles--;
+                }
+                break;
+            case FSRQ_FINDFIRST:
+                if (savedRc == NO_ERROR && savedSearch)
+                {
+                    freeSearchData(savedSearch);
+                    savedVol->cSearches--;
+                }
+                break;
+            default:
+                break;
+        }
+        return 0;
+    }
     if (rc)
     {
         logMsg(L_FATAL, "Error %d signalling request completion to FSD", rc);

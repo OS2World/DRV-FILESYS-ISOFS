@@ -25,7 +25,7 @@
 #include "stubfsd.h"
 
 #define IFS_NAME "ISOFS"
-#define IFS_VERSION "ISOFS 1.2.0"
+#define IFS_VERSION "ISOFS 1.2.1"
 
 #define ISOFS_MOUNT_SEM    "\\SEM32\\ISOFS\\MOUNT"
 

@@ -6,7 +6,7 @@
 #define ISOFS_VERSION_H_INCLUDED
 
 #define ISOFS_NAME     "ISOFS"
-#define ISOFS_VERSION_STR "1.2.0"
+#define ISOFS_VERSION_STR "1.2.1"
 #define ISOFS_BANNER   "Version " ISOFS_VERSION_STR " (built " __DATE__ ")"
 
 #endif

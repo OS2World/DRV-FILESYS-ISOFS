@@ -166,6 +166,7 @@ APIRET storeEAsInFEAList(PGEALIST pgeas, ULONG cbData, char * pData);
 /* FSD functions. */
 APIRET fsFsCtl(ServerData * pServerData, struct fsctl * pfsctl);
 APIRET fsAttach(ServerData * pServerData, struct attach * pattach);
+void freeSearchData(SearchData * pSearchData);
 APIRET fsIOCtl(ServerData * pServerData, struct ioctl * pioctl);
 APIRET fsFsInfo(ServerData * pServerData, struct fsinfo * pfsinfo);
 APIRET fsFlushBuf(ServerData * pServerData,

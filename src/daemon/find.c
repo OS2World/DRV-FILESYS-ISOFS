@@ -29,7 +29,7 @@
 #include "ifsdmn.h"
 
 
-static void freeSearchData(SearchData * pSearchData)
+void freeSearchData(SearchData * pSearchData)
 {
     while (pSearchData->pFirstInIsoDir)
     {

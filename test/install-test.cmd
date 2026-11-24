@@ -25,7 +25,7 @@ done = 0
 do i = 1 to n
   u = translate(strip(l.i))
   if pos('C:\ISOFS\', u) > 0 then iterate
-  if u = 'IFS=C:\SYS\BIN\STUBFSD.IFS ISOFS' then do
+  if u = 'IFS=C:\SYS\BIN\STUBFSD.IFS ISOFS' | u = 'REM IFS=C:\SYS\BIN\STUBFSD.IFS ISOFS' then do
     call lineout tmp, 'REM IFS=C:\sys\bin\STUBFSD.IFS ISOFS'
     call lineout tmp, 'IFS=C:\ISOFS\'ifsfile 'ISOFS' params
     done = 1

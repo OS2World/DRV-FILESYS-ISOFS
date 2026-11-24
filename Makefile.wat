@@ -29,7 +29,7 @@ option protmode
 option stack=0
 option quiet
 option map=$(BIN_DIR)\isofs.map
-option description '@#OS2World:1.2.0#@ISOFS stub IFS (Open Watcom)'
+option description '@#OS2World:1.2.1#@ISOFS stub IFS (Open Watcom)'
 library os2
 import DOSREAD DOSCALLS.137
 import DOSWRITE DOSCALLS.138

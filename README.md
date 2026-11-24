@@ -7,7 +7,7 @@ can be used without burning it. A small ring 0 stub IFS (`isofs.ifs`) passes the
 | | |
 |---|---|
 | Status | working in a virtual machine: mount, list, read, copy, unmount of an image; MD5 sums identical to the ArcaOS ISOFS; alpha |
-| Version | 1.2.0 (update of version 1.1.2) |
+| Version | 1.2.1 (update of version 1.1.2) |
 | Tested on | ArcaOS 5.1.2 (kernel 14.204 SMP) in a VirtualBox virtual machine. Not tested on real hardware. |
 | License | GNU GPL v2 or later, see `LICENSE` |
 | Authors | Eelco Dolstra (AEFS), Chris Wohlgemuth (ISOFS 0.2.1), Paul Ratcliffe (ISOFS 1.x), Rich Walsh, OS2World (this update) |
