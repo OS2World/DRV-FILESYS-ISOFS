@@ -238,6 +238,8 @@ static APIRET daemonStarted(PSETXCHGBUFFERS pxchg)
    
    rc = FSH_SEMCLEAR(&semSerialize);
    if (rc) return rc;
+
+   return NO_ERROR;   /* the original had no return here: the value was whatever the last call left in AX */
 }
 
 
