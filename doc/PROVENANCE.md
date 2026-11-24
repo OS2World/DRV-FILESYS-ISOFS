@@ -1,6 +1,6 @@
 # Provenance of the kernel interface headers
 
-The 1.1.2 tree contained the IBM IFS developer kit (`ifsinf\`: `FSD.H`, `FSH.H`, `FSHELPER.LIB`, `IFS.INF`) and `src\driverfshelper.lib`.
+The 1.1.2 tree contained the IBM IFS developer kit (`ifsinf\`: `FSD.H`, `FSH.H`, `FSHELPER.LIB`, `IFS.INF`) and `src\driver\fshelper.lib`.
 Those are IBM material and are not part of this release; they remain only in git history (tag `upstream-original`).
 
 * `src\driver\fsd.h`, `fsh.h`, `devhelp.h`, `ring0types.h` and `dhwrap.asm` are clean-room files written by OS2World from public

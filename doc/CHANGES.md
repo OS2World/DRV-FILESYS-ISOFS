@@ -5,7 +5,7 @@ The original state is tagged `upstream-original`.
 ## Layout
 * Sources moved to `src\{daemon,driver,libunls,include,misc,system}`; `COPYING` renamed `LICENSE`; the packaging files are in `package\`;
   the Microsoft C / DDK makefiles are in `doc\original\`.
-* Removed: the IBM IFS kit `ifsinf\` (FSD.H, FSH.H, FSHELPER.LIB, IFS.INF, addenda), `src\driverfshelper.lib`, and logs (`wpi.log`, `my.log`).
+* Removed: the IBM IFS kit `ifsinf\` (FSD.H, FSH.H, FSHELPER.LIB, IFS.INF, addenda), `src\driver\fshelper.lib`, and logs (`wpi.log`, `my.log`).
 
 ## Build
 * `compile_wat.cmd`, `Makefile.wat` (new): stub IFS with Open Watcom 2, output `bin\isofs.ifs` (renamed so it does not clash with `STUBFSD.IFS` of ArcaOS).
