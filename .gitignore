@@ -1,0 +1,15 @@
+bin/
+*.obj
+*.o
+*.d
+*.map
+*.err
+*.log
+*.lnk
+*.sym
+*.ifs
+*.exe
+*.res
+*.msg
+*.inf
+*.wpi
