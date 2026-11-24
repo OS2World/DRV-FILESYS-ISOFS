@@ -18,15 +18,19 @@
    along with this program; if not, write to the Free Software Foundation,
    Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
 
+#include <string.h>
+
 #define INCL_DOSERRORS
 #include <os2.h>
 
-#include "dhcalls.h"
+#include "ring0types.h"
+#include "devhelp.h"
 #include "fsd.h"
 #include "fsh.h"
 
 #define RING0
 #include "stubfsd.h"
+#include "bootmsg.h"
 
 #undef FS_ATTACH
 
@@ -38,7 +42,7 @@
 PFN Device_Help;
 
 /* Exported (see stubfsd.def) variables. */
-char pascal FS_NAME[] = "STUBFSD\000\000\000\000";
+char pascal FS_NAME[] = "ISOFS\000\000\000\000\000\000";
 ULONG pascal FS_ATTRIBUTE = FSA_REMOTE;
 
 /* The pid if the daemon process.  0 = no daemon is currently
@@ -83,7 +87,7 @@ static void panic(char far * pszMsg)
 
 
 /* Macro: prepend the FSD's name to the specified IPE message. */
-#define PANIC(msg) panic("STUBFSD: " msg)
+#define PANIC(msg) panic("ISOFS: " msg)
 
 
 /* Map a virtual (16:16) pointer to a linear (0:32) pointer. */
@@ -287,43 +291,52 @@ FS_INIT(
    SEL aselMapping[2];
    char far * p;
    int i;
-   char errmsg[] = "STUBFSD: no filesystem name parameter - using ISOFS\r\n";
+   int fDefaultName = 0;
 
    Device_Help = (PFN) pDevHlp;
 
    pidDaemon = 0;
 
-   /* Parse the IFS name. */
+   /* The first word is the file system name (default ISOFS), unless it is a switch. */
    p = pszParm;
    if (!IS_NULL(p)) {
       while (*p == ' ' || *p == '\t')
          p++;
    }
 
-   /* If no name was supplied, display an error msg and
-    * use the default (ISOFS); otherwise, copy the name.
-    */
-   if (IS_NULL(p) || !*p) {
-      Dos16Write(1, errmsg, sizeof(errmsg)-1, &i);
+   if (IS_NULL(p) || !*p || *p == '/') {
       strcpy(FS_NAME, "ISOFS");
+      fDefaultName = 1;
    }
    else {
-      for (i = 0; i < sizeof(FS_NAME); i++) {
+      for (i = 0; i < sizeof(FS_NAME) - 1; i++) {
          if (!*p || *p == ' ' || *p == '\t')
             break;
          FS_NAME[i] = *p++;
       }
       FS_NAME[i] = 0;
+      /* A name that is too long is cut; skip what is left of it. */
+      while (*p && *p != ' ' && *p != '\t')
+         p++;
    }
+
+   /* Switches (/V /Q /W /AA) and the verbose banner. */
+   rc = BootInit(IS_NULL(p) ? (char far *) 0 : p);
+   if (rc) return BootDone(rc);
+   if (fDefaultName)
+      BootNote("No file system name given, using ISOFS.");
 
    /* Allocate enough GDT selectors. */
    rc = DevHelp_AllocGDTSelector(aselMapping, 2);
-   if (rc) return rc;
+   if (rc) {
+      BootFail("Could not allocate the selectors for the exchange buffers.");
+      return BootDone(rc);
+   }
 
    pRequest = MAKEP(aselMapping[0], 0);
    pFSData = MAKEP(aselMapping[1], 0);
 
-   return NO_ERROR;
+   return BootDone(NO_ERROR);
 }
 
 

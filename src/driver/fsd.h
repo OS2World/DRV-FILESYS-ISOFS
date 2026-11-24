@@ -1,452 +1,352 @@
-#ifndef _FSD_H
-#define _FSD_H
+/*
+ * fsd.h - kernel records and constants of the OS/2 installable file system (IFS) interface
+ *
+ * Copyright (c) 2026 OS2World.
+ * Released under the GNU Lesser General Public License, version 2.1 or later,
+ * so that it can be used in GPL projects such as ISOFS (GPL version 2 or later).
+ *
+ * Clean-room replacement: written from public documentation, see doc/PROVENANCE.md of the ISOFS project.
+ * The structure and constant groups were first written for the HFS/2 port (OS2World,
+ * 2026), where they were verified by mounting, reading and writing a volume on ArcaOS;
+ * they were completed here from the IFS reference documentation.
+ *
+ * This header holds the records the kernel hands to the FS_xxx entry points and the
+ * value groups of those entry points. It does NOT declare the FS_xxx functions: the
+ * driver sources define them with their own argument lists.
+ *
+ * Constants of the compiler's own OS/2 headers (FILE_*, OPEN_*, FSIL_*, FSCTL_HANDLE,
+ * FSCTL_PATHNAME, FSCTL_FSDNAME, CCHMAXPATH, ...) are not repeated.
+ */
 
-/* gcc doesn't know about far pointers, which is not a
-   problem, because such 16:16 pointers are meaningless to the
-   ring 3 daemon anyway. */
+#ifndef ISOFS_FSD_H_INCLUDED
+#define ISOFS_FSD_H_INCLUDED
+
+/* The ring 3 daemon (GCC) has no far pointers: 16:16 pointers mean nothing there. */
 #ifdef __GNUC__
 #define far
 #endif
 
-/* gcc shouldn't align structs. */
-#pragma pack(1)
+#ifndef CCHMAXPATH
+#define CCHMAXPATH 260
+#endif
 
-/*static char *SCCSID = "@(#)fsd.h      6.5 91/12/16";*/
-/*  fsd.h   - File system driver entry point declarations */
+/* ------------------------------------------------------------------ */
+/* Bits of the exported FS_ATTRIBUTE doubleword                         */
+/* ------------------------------------------------------------------ */
 
-/*  FS_ATTRIBUTE bit field values */
+#define FSA_REMOTE      0x00000001UL    /* driver talks to a remote machine   */
+#define FSA_UNC         0x00000002UL    /* driver understands UNC names       */
+#define FSA_LOCK        0x00000004UL    /* driver wants byte-range lock calls */
+#define FSA_LVL7        0x00000008UL    /* driver answers path-info level 7   */
+#define FSA_PSVR        0x00000010UL    /* driver manages remote named pipes  */
+/* UNVERIFIED: the 1993 IFS reference predates this bit; the value is the one used
+   by other open-source OS/2 file system drivers. */
+#define FSA_LARGEFILE   0x00000020UL    /* driver supports files over 2 GB    */
 
-#define FSA_REMOTE  0x00000001  /* Set if REMOTE FSD                  */
-#define FSA_UNC     0x00000002  /* Set if FSD implements UNC support  */
-#define FSA_LOCK    0x00000004  /* Set if FSD needs lock notification */
-#define FSA_LVL7    0x00000008  /* Set if FSD will accept Level 7     */
-     /* DosQueryPathInfo requests - These are requests for the case-  */
-     /* perserved "path" of the input file/path name.                 */
-#define FSA_PSVR    0x00000010  /* Set if FSD manages Remote NmPipes  */
+/* ------------------------------------------------------------------ */
+/* Sizes of the driver-private work areas the kernel reserves           */
+/* ------------------------------------------------------------------ */
 
-#define CDDWORKAREASIZE 8
-#define SFDWORKAREASIZE 30
-#define VPDWORKAREASIZE 36
+#define CDDWORKAREASIZE   8         /* per current-directory record */
+#define SFDWORKAREASIZE  30         /* per open file                */
+#define VPDWORKAREASIZE  36         /* per mounted volume           */
+#define FSFSD_WORK_SIZE  24         /* per directory search         */
 
+#pragma pack(push, 1)
 
-/* Volume Parameter structures */
+/* ------------------------------------------------------------------ */
+/* Volume parameters                                                    */
+/* ------------------------------------------------------------------ */
 
 #define VPBTEXTLEN 12
 
-struct  vpfsi {
-    unsigned long   vpi_vid;                /* 32 bit volume ID */
-    unsigned long   vpi_hDEV;               /* handle to device driver */
-    unsigned short  vpi_bsize;              /* sector size in bytes */
-    unsigned long   vpi_totsec;             /* total number of sectors */
-    unsigned short  vpi_trksec;             /* sectors / track */
-    unsigned short  vpi_nhead;              /* number of heads */
-    char            vpi_text[VPBTEXTLEN];   /* volume name */
-    void far *      vpi_pDCS;               /* device capability struc */
-    void far *      vpi_pVCS;               /* volume characteristics struc */
-    unsigned char   vpi_drive;              /* drive (0=A) */
-    unsigned char   vpi_unit;               /* unit code */
-};  /* vpfsi */
+struct vpfsi {                      /* kernel-owned part                    */
+    unsigned long  vpi_vid;         /* volume serial number                 */
+    unsigned long  vpi_hDEV;        /* device driver handle                 */
+    unsigned short vpi_bsize;       /* bytes per sector                     */
+    unsigned long  vpi_totsec;      /* sectors on the volume                */
+    unsigned short vpi_trksec;      /* sectors per track                    */
+    unsigned short vpi_nhead;       /* heads                                */
+    char           vpi_text[VPBTEXTLEN]; /* volume label                    */
+    void far      *vpi_pDCS;        /* 16:16 pointer to the driver capabilities structure */
+    void far      *vpi_pVCS;        /* 16:16 pointer to the volume characteristics structure */
+    unsigned char  vpi_drive;       /* drive letter index, A = 0            */
+    unsigned char  vpi_unit;        /* unit within the device driver        */
+    /* UNVERIFIED (size only): later kernels append a flags word; the driver sources
+       do not touch it. */
+    unsigned short vpi_flags;       /* memory-capability flags (VPB_*)      */
+};
 
-/*
- * Predefined volume IDs: [note - keep this list in sync with list in
- * dos/dosinc/vpb.inc!]
- */
-/* Unique ID for vpb_ID field for unreadable media. */
-#define UNREAD_ID  0x534E4A52L          /* Stored as (bytes) 0x52,4A,4E,53. */
+#define VPB_ABOVE16M_ALLOWED   0x0001   /* device may use memory above 16 MB  */
+#define VPB_NONCONTIG_ALLOWED  0x0002   /* FSD copes with discontiguous I/O   */
 
-/*
- * Unique ID for vpb_ID field for damaged volume (recognized by IFS but cannot
- * be normally mounted).
- */
-#define DAMAGED_ID 0x0L                 /* Stored as (bytes) 0,0,0,0. */
+#define UNREAD_ID   0x534E4A52UL    /* volume id marking unreadable media */
+#define DAMAGED_ID  0x00000000UL    /* volume id marking a damaged volume */
 
-/* file system dependent - volume params */
-struct  vpfsd {
-    char    vpd_work[VPDWORKAREASIZE];      /* work area */
-};  /* vpfsd */
+struct vpfsd {                      /* driver-private volume area */
+    char vpd_work[VPDWORKAREASIZE];
+};
 
-
-/* Current Directory structures */
+/* ------------------------------------------------------------------ */
+/* Current directory                                                    */
+/* ------------------------------------------------------------------ */
 
 struct cdfsi {
-    unsigned short  cdi_hVPB;           /* VPB handle for associated device */
-    unsigned short  cdi_end;            /* end of root portion of curdir */
-    char            cdi_flags;          /* flags indicating state of cdfsd */
-    char            cdi_curdir[CCHMAXPATH]; /* text of current directory */
-};  /* cdfsi */
+    unsigned short cdi_hVPB;        /* volume handle                        */
+    unsigned short cdi_end;         /* length of the root part of the path  */
+    char           cdi_flags;       /* CDI_* state bits                     */
+    char           cdi_curdir[CCHMAXPATH]; /* current directory text        */
+};
 
-/* bit values for cdi_flags (state of cdfsd structure */
+#define CDI_ISVALID    0x80
+#define CDI_ISROOT     0x40
+#define CDI_ISCURRENT  0x20
 
-#define CDI_ISVALID 0x80                /* format is known */
-#define CDI_ISROOT  0x40                /* cur dir == root */
-#define CDI_ISCURRENT   0x20
+struct cdfsd {
+    char cdd_work[CDDWORKAREASIZE];
+};
 
-struct  cdfsd {
-    char    cdd_work[CDDWORKAREASIZE];      /* work area */
-};  /* cdfsd */
+/* ------------------------------------------------------------------ */
+/* Open file (system file table entry)                                  */
+/* ------------------------------------------------------------------ */
 
+struct sffsi {
+    unsigned long  sfi_mode;        /* access and sharing mode              */
+    unsigned short sfi_hVPB;        /* volume handle                        */
+    unsigned short sfi_ctime;       /* creation time                        */
+    unsigned short sfi_cdate;       /* creation date                        */
+    unsigned short sfi_atime;       /* last access time                     */
+    unsigned short sfi_adate;       /* last access date                     */
+    unsigned short sfi_mtime;       /* last write time                      */
+    unsigned short sfi_mdate;       /* last write date                      */
+    unsigned long  sfi_size;        /* length in bytes                      */
+    unsigned long  sfi_position;    /* file pointer                         */
+    unsigned short sfi_UID;         /* user id of first opener              */
+    unsigned short sfi_PID;         /* process id of first opener           */
+    unsigned short sfi_PDB;         /* DOS-box process block of first opener*/
+    unsigned short sfi_selfsfn;     /* this entry's own file number         */
+    unsigned char  sfi_tstamp;      /* ST_* timestamp request bits          */
+    unsigned short sfi_type;        /* STYPE_* kind of object               */
+    unsigned long  sfi_pPVDBFil;    /* performance counter block pointer    */
+    unsigned char  sfi_DOSattr;     /* DOS attribute byte                   */
+    LONGLONG       sfi_sizel;       /* 64-bit length (the compiler's OS/2 headers define LONGLONG) */
+    LONGLONG       sfi_positionl;   /* 64-bit file pointer                  */
+};
 
-/* Per open-instance (System File) structures */
+#define ST_SCREAT   0x01            /* stamp creation time          */
+#define ST_PCREAT   0x02            /* propagate creation time      */
+#define ST_SWRITE   0x04            /* stamp last-write time        */
+#define ST_PWRITE   0x08            /* propagate last-write time    */
+#define ST_SREAD    0x10            /* stamp last-access time       */
+#define ST_PREAD    0x20            /* propagate last-access time   */
 
-struct  sffsi {
-    unsigned long   sfi_mode;       /* access/sharing mode */
-    unsigned short  sfi_hVPB;       /* volume info. */
-    unsigned short  sfi_ctime;      /* file creation time */
-    unsigned short  sfi_cdate;      /* file creation date */
-    unsigned short  sfi_atime;      /* file access time */
-    unsigned short  sfi_adate;      /* file access date */
-    unsigned short  sfi_mtime;      /* file modification time */
-    unsigned short  sfi_mdate;      /* file modification date */
-    unsigned long   sfi_size;       /* size of file */
-    unsigned long   sfi_position;   /* read/write pointer */
-/* the following may be of use in sharing checks */
-    unsigned short  sfi_UID;        /* user ID of initial opener */
-    unsigned short  sfi_PID;        /* process ID of initial opener */
-    unsigned short  sfi_PDB;        /* PDB (in 3.x box) of initial opener */
-    unsigned short  sfi_selfsfn;    /* system file number of file instance */
-    unsigned char   sfi_tstamp;     /* update/propagate time stamp flags */
-                                    /* use with ST_Sxxx and ST_Pxxx */
-    unsigned short  sfi_type;       /* use with STYPE_ */
-    unsigned long   sfi_pPVDBFil;   /* performance counter data block pointer */
-    unsigned char   sfi_DOSattr;    /* DOS file attributes  D/S/A/H/R  */
-};  /* sffsi */
+#define STYPE_FILE    0
+#define STYPE_DEVICE  1
+#define STYPE_NMPIPE  2
+#define STYPE_FCB     4
 
-/* sfi_tstamps flags */
-#define ST_SCREAT  1    /* stamp creation time */
-#define ST_PCREAT  2    /* propagate creation time */
-#define ST_SWRITE  4    /* stamp last write time */
-#define ST_PWRITE  8    /* propagate last write time */
-#define ST_SREAD  16    /* stamp last read time */
-#define ST_PREAD  32    /* propagate last read time */
+struct sffsd {
+    char sfd_work[SFDWORKAREASIZE];
+};
 
-/* sfi_type flags */
-#define STYPE_FILE      0       /* file */
-#define STYPE_DEVICE    1       /* device */
-#define STYPE_NMPIPE    2       /* named pipe */
-#define STYPE_FCB       4       /* fcb sft */
+/* ------------------------------------------------------------------ */
+/* Directory search                                                     */
+/* ------------------------------------------------------------------ */
 
-/* file system dependent - file instance */
-struct  sffsd {
-    char    sfd_work[SFDWORKAREASIZE];      /* work area */
-};  /* sffsd */
-
-
-/* file system independent - file search parameters */
 struct fsfsi {
-        unsigned short  fsi_hVPB;       /* volume info. */
-};  /* fsfsi */
+    unsigned short fsi_hVPB;
+};
 
-/* file system dependent - file search parameters */
-#define FSFSD_WORK_SIZE     24
 struct fsfsd {
-        char            fsd_work[FSFSD_WORK_SIZE];      /* work area */
-};  /* fsfsd */
+    char fsd_work[FSFSD_WORK_SIZE];
+};
 
-/* file system dependent - device information */
-struct devfsd {
-        unsigned long   FSDRef; /* Reference obtained from FSD during ATTACH */
-};  /* devfsd */
+/* ------------------------------------------------------------------ */
+/* Byte-range lock record (FS_FILELOCKS / FS_CANCELLOCKREQUEST)         */
+/* ------------------------------------------------------------------ */
 
-/*****
- *
- * union and structures for FS_FSCTL
- */
-/* pArgType == 1, FileHandle directed case */
-struct SF {
-        struct sffsi far * psffsi;
-        struct sffsd far * psffsd;
-};  /* SF */
+/* UNVERIFIED: layout taken from the user-level lock record of DosSetFileLocks. */
+struct filelock {
+    long lOffset;                   /* start of range */
+    long lRange;                    /* length of range */
+};
 
-/* pArgType == 2, PathName directed case */
-struct CD {
-        struct cdfsi far * pcdfsi;
-        struct cdfsd far * pcdfsd;
-        char far *         pPath;
-        unsigned short     iCurDirEnd;
-};  /* CD */
+/* ------------------------------------------------------------------ */
+/* FS_FSCTL argument block                                              */
+/* ------------------------------------------------------------------ */
 
-union argdat {
-    /* pArgType == 1, FileHandle directed case */
+struct SF {                         /* iArgType == FSCTL_ARG_FILEINSTANCE */
+    struct sffsi far *psffsi;
+    struct sffsd far *psffsd;
+};
+
+struct CD {                         /* iArgType == FSCTL_ARG_CURDIR */
+    struct cdfsi far *pcdfsi;
+    struct cdfsd far *pcdfsd;
+    char far         *pPath;
+    unsigned short    iCurDirEnd;
+};
+
+union argdat {                      /* iArgType == FSCTL_ARG_NULL: unused */
     struct SF sf;
-
-    /* pArgType == 2, PathName directed case */
     struct CD cd;
+};
 
-    /* pArgType == 3, FSD Name directed case */
-    /* nothing */
-};  /* argdat */
+/* ------------------------------------------------------------------ */
+/* FS_DOPAGEIO command list                                             */
+/* ------------------------------------------------------------------ */
 
+struct PageCmd {
+    unsigned char Cmd;              /* read / write / write-verify          */
+    unsigned char Priority;
+    unsigned char Status;           /* PGIO_ATTEMPTED / PGIO_FAILED         */
+    unsigned char Error;            /* error code for this transfer         */
+    unsigned long Addr;             /* physical or 16:16 virtual address    */
+    unsigned long FileOffset;       /* page-aligned offset in the page file */
+};
 
-/*****
- *
- * Union and structures for FS_NMPIPE
- *
- */
+struct PageCmdHeader {
+    unsigned char InFlags;          /* PGIO_FI_* */
+    unsigned char OutFlags;         /* PGIO_FO_*, must be zero on entry */
+    unsigned char OpCount;          /* number of entries that follow */
+    unsigned char Pad;
+    unsigned long Reserved1;
+    unsigned long Reserved2;
+    unsigned long Reserved3;
+    struct PageCmd PageCmdList[1];
+};
 
-    /* Get/SetPHandState parameter block */
-    struct      phs_param {
-        short   phs_len;
-        short   phs_dlen;
-        short   phs_pmode;      /* pipe mode set or returned */
-    };
+/* ------------------------------------------------------------------ */
+/* FS_FILEIO command list (layouts from the IFS reference, FS_FILEIO)   */
+/* ------------------------------------------------------------------ */
 
+#define FILEIO_LOCK     0           /* Cmd values */
+#define FILEIO_UNLOCK   1
+#define FILEIO_SEEK     2
+#define FILEIO_READ     3
+#define FILEIO_WRITE    4
 
-    /* DosQNmPipeInfo parameter block,
-     * data is info. buffer addr */
-    struct      npi_param {
-        short   npi_len;
-        short   npi_dlen;
-        short   npi_level;      /* information level desired */
-    };
+struct CmdLock {                    /* followed by LockCnt struct Lock records */
+    unsigned short Cmd;
+    unsigned short LockCnt;
+    unsigned long  TimeOut;         /* ms; 0 no wait, 0xFFFFFFFF wait forever  */
+};
 
+struct Lock {
+    unsigned short Share;           /* 0 exclusive, 1 read-only for others */
+    long           Start;
+    long           Length;
+};
 
-    /* DosRawReadNmPipe parameters,
-     * data is buffer addr */
-    struct      npr_param {
-        short   npr_len;
-        short   npr_dlen;
-        short   npr_nbyt;       /* number of bytes read */
-    };
+struct CmdUnLock {                  /* followed by UnlockCnt struct UnLock records */
+    unsigned short Cmd;
+    unsigned short UnlockCnt;
+};
 
-    /* DosRawWriteNmPipe parameters,
-     * data is buffer addr */
-    struct      npw_param {
-        short   npw_len;
-        short   npw_dlen;
-        short   npw_nbyt;       /* number of bytes written */
-    };
+struct UnLock {
+    long Start;
+    long Length;
+};
 
-    /* NPipeWait parameters */
-    struct      npq_param {
-        short   npq_len;
-        short   npq_dlen;
-        long    npq_timeo;      /* timeout in milliseconds */
-        short   npq_prio;       /* priority of caller */
-    };
+struct CmdSeek {
+    unsigned short Cmd;
+    unsigned short Method;          /* 0 absolute, 1 relative to current, 2 relative to end */
+    long           Position;
+    long           Actual;
+};
 
-    /* DosCallNmPipe parameters,
-     * data is in-buffer addr */
-    struct      npx_param {
-        short           npx_len;
-        unsigned short  npx_ilen;   /* length of in-buffer */
-        char far        *npx_obuf;  /* pointer to out-buffer */
-        unsigned short  npx_olen;   /* length of out-buffer */
-        unsigned short  npx_nbyt;   /* number of bytes read */
-        long            npx_timeo;  /* timeout in milliseconds */
-    };
+struct CmdIO {
+    unsigned short Cmd;             /* FILEIO_READ or FILEIO_WRITE */
+    void far      *Buffer;
+    unsigned short BufferLen;
+    unsigned short Actual;
+};
 
-    /* PeekPipe parameters, data is buffer addr */
-    struct      npp_param {
-        short           npp_len;
-        unsigned short  npp_dlen;
-        unsigned short  npp_nbyt;   /* number of bytes read */
-        unsigned short  npp_avl0;   /* bytes left in pipe */
-        unsigned short  npp_avl1;   /* bytes left in current msg */
-        unsigned short  npp_state;  /* pipe state */
-    };
+/* UNVERIFIED: 64-bit lock record of FS_FILELOCKSL / FS_CANCELLOCKREQUESTL;
+   the field names are the ones the driver sources use, the layout is two 64-bit
+   values (offset, length) like struct filelock. */
+struct filelockl {
+    LONGLONG FileOffset;
+    LONGLONG RangeLength;
+};
 
-    /* DosTransactNmPipe parameters,
-     * data is in-buffer addr */
-    struct      npt_param {
-        short           npt_len;
-        unsigned short  npt_ilen;   /* length of in-buffer */
-        char far        *npt_obuf;  /* pointer to out-buffer */
-        unsigned short  npt_olen;   /* length of out-buffer */
-        unsigned short  npt_nbyt;   /* number of bytes read */
-    };
+#pragma pack(pop)
 
-    /* QNmpipeSemState parameter block,
-     * data is user data buffer */
-    struct      qnps_param {
-        unsigned short  qnps_len;   /* length of parameter block */
-        unsigned short  qnps_dlen;  /* length of supplied data block */
-        long            qnps_semh;  /* system semaphore handle */
-        unsigned short  qnps_nbyt;  /* number of bytes returned */
-    };
+#define PGIO_FI_ORDER   0x01
+#define PGIO_FO_DONE    0x01
+#define PGIO_FO_ERROR   0x02
+#define PGIO_ATTEMPTED  0x0F
+#define PGIO_FAILED     0xF0
 
-    /* ConnectPipe parameter block, no data block */
-    struct      npc_param {
-        unsigned short  npc_len;    /* length of parameter block */
-        unsigned short  npc_dlen;   /* length of data block */
-    };
+/* flags for the *pFlags word of FS_OPENPAGEFILE */
+#define PGIO_FIRSTOPEN  0x00000001UL
+#define PGIO_PADDR      0x00004000UL
+#define PGIO_VADDR      0x00008000UL
 
-    /* DisconnectPipe parameter block, no data block */
-    struct      npd_param {
-        unsigned short  npd_len;    /* length of parameter block */
-        unsigned short  npd_dlen;   /* length of data block */
-    };
+/* ------------------------------------------------------------------ */
+/* Parameter value groups, one block per entry point                    */
+/* ------------------------------------------------------------------ */
 
-    union npoper {
-        struct phs_param    phs;
-        struct npi_param    npi;
-        struct npr_param    npr;
-        struct npw_param    npw;
-        struct npq_param    npq;
-        struct npx_param    npx;
-        struct npp_param    npp;
-        struct npt_param    npt;
-        struct qnps_param   qnps;
-        struct npc_param    npc;
-        struct npd_param    npd;
-    };  /* npoper */
+#define IOFL_WRITETHRU  0x10        /* IOflag: write through the cache */
+#define IOFL_NOCACHE    0x20        /* IOflag: do not cache the data   */
 
+#define FSA_ATTACH       0x00       /* FS_ATTACH flag values */
+#define FSA_DETACH       0x01
+#define FSA_ATTACH_INFO  0x02
 
-/*****
- *
- * Declarations for FS_DOPAGEIO entry point.
- *
- */
+#define CD_EXPLICIT  0x00           /* FS_CHDIR flag values */
+#define CD_VERIFY    0x01
+#define CD_FREE      0x02
 
-    struct PageCmd {
-        unsigned char Cmd;          /* Cmd code for Read, Write, WriteVerify */
-        unsigned char Priority;     /* Same values as for request packets */
-        unsigned char Status;       /* Status byte */
-        unsigned char Error;        /* I24 error code */
-        unsigned long Addr;         /* Physical (32 bit) or Virtual (16:16) */
-        unsigned long FileOffset;   /* Byte offset in page file */
-                                    /* (on page boundary) */
-    };
+#define CFP_RELBEGIN  0x00          /* FS_CHGFILEPTR origin values */
+#define CFP_RELCUR    0x01
+#define CFP_RELEND    0x02
 
-    struct PageCmdHeader {
-        unsigned char InFlags;          /* Input flags */
-        unsigned char OutFlags;         /* Output flags - must be 0 on entry */
-        unsigned char OpCount;          /* Number of operations */
-        unsigned char Pad;              /* Preserve DWORD alignment */
-        unsigned long Reserved1;        /* unused */
-        unsigned long Reserved2;        /* unused */
-        unsigned long Reserved3;        /* unused */
-        struct PageCmd PageCmdList [1]; /* The actual commands */
-    };
-
-    /* FSD_DoPageIO InFlags values */
-    #define PGIO_FI_ORDER   0x01    /* Force Order of operations */
-
-    /* FSD_DoPageIO OutFlags values */
-    #define PGIO_FO_DONE    0x01    /* Operation done */
-    #define PGIO_FO_ERROR   0x02    /* Operation failed */
-
-    /* FSD_DoPageIO Status values */
-    #define PGIO_ATTEMPTED  0x0f    /* Operation attempted */
-    #define PGIO_FAILED     0xf0    /* Operation failed */
-
-/*****
- *
- * Declarations for the FSD entry points.
- *
- */
-
-/* bit values for the IOflag parameter in various FS_ entry points */
-#define IOFL_WRITETHRU      0x10        /* Write through bit    */
-#define IOFL_NOCACHE        0x20        /* No Cache bit         */
-
-
-/* values for flag in FS_ATTACH */
-#define FSA_ATTACH              0x00
-#define FSA_DETACH              0x01
-#define FSA_ATTACH_INFO         0x02
-
-/* values for flag in FS_CHDIR */
-#define CD_EXPLICIT             0x00
-#define CD_VERIFY               0x01
-#define CD_FREE                 0x02
-
-/* values for type in FS_CHGFILEPTR */
-#define CFP_RELBEGIN            0x00
-#define CFP_RELCUR              0x01
-#define CFP_RELEND              0x02
-
-#define FS_CL_ORDINARY  0
-                /* ordinary close of file */
+#define FS_CL_ORDINARY  0           /* FS_CLOSE type values */
 #define FS_CL_FORPROC   1
-                /* final close of file for the process */
 #define FS_CL_FORSYS    2
-                /* final close of file for the system (for all processes) */
 
-/* values for commit type */
-#define FS_COMMIT_ONE   1
-        /* commit for a single file */
+#define FS_COMMIT_ONE   1           /* FS_COMMIT type values */
 #define FS_COMMIT_ALL   2
-        /* commit due to buf reset - for all files */
 
-/* values for flag in FS_FILEATTRIBUTE */
-#define FA_RETRIEVE             0x00
-#define FA_SET                  0x01
+#define FA_RETRIEVE  0x00           /* FS_FILEATTRIBUTE flag values */
+#define FA_SET       0x01
 
-/* values for flag in FS_FILEINFO */
-#define FI_RETRIEVE             0x00
-#define FI_SET                  0x01
+#define FI_RETRIEVE  0x00           /* FS_FILEINFO flag values */
+#define FI_SET       0x01
 
-/* values for flag in FS_FindFirst, FS_FindFromName, FS_FindNext */
-#define     FF_NOPOS            0x00
-#define     FF_GETPOS           0X01
+#define FF_NOPOS  0x00              /* FS_FIND* position-return flag */
+#define FF_GETPOS 0x01
 
+#define FLUSH_RETAIN   0x00         /* FS_FLUSHBUF flag values */
+#define FLUSH_DISCARD  0x01
 
-/* values for flag in FS_FLUSH */
-#define FLUSH_RETAIN            0x00
-#define FLUSH_DISCARD           0x01
-
-/* values for iArgType in FS_FSCTL */
-#define FSCTL_ARG_FILEINSTANCE  0x01
+#define FSCTL_ARG_FILEINSTANCE  0x01    /* FS_FSCTL iArgType values */
 #define FSCTL_ARG_CURDIR        0x02
 #define FSCTL_ARG_NULL          0x03
 
-/* values for func in FS_FSCTL */
-#define FSCTL_FUNC_NONE         0x00
-#define FSCTL_FUNC_NEW_INFO     0x01
-#define FSCTL_FUNC_EASIZE       0x02
+#define FSCTL_FUNC_NONE      0x00   /* FS_FSCTL function values */
+#define FSCTL_FUNC_NEW_INFO  0x01
+#define FSCTL_FUNC_EASIZE    0x02
 
-/* values for flag in FS_FSINFO */
-#define INFO_RETRIEVE           0x00
-#define INFO_SET                0x01
+#define INFO_RETRIEVE  0x00         /* FS_FSINFO flag values */
+#define INFO_RETREIVE  0x00         /* historical misspelling, same value */
+#define INFO_SET       0x01
 
-/* values for flag in FS_MOUNT */
-#define MOUNT_MOUNT             0x00
-#define MOUNT_VOL_REMOVED       0x01
-#define MOUNT_RELEASE           0x02
-#define MOUNT_ACCEPT            0x03
+#define MOUNT_MOUNT        0x00     /* FS_MOUNT flag values */
+#define MOUNT_VOL_REMOVED  0x01
+#define MOUNT_RELEASE      0x02
+#define MOUNT_ACCEPT       0x03
 
-/* Values for OpType in FS_NMPIPE   */
+#define FOC_NEEDEAS  0x01           /* FS_OPENCREATE *pfgenflag bit */
 
-#define     NMP_GetPHandState       0x21
-#define     NMP_SetPHandState       0x01
-#define     NMP_PipeQInfo           0x22
-#define     NMP_PeekPipe            0x23
-#define     NMP_ConnectPipe         0x24
-#define     NMP_DisconnectPipe      0x25
-#define     NMP_TransactPipe        0x26
-#define     NMP_READRAW             0x11
-#define     NMP_WRITERAW            0x31
-#define     NMP_WAITPIPE            0x53
-#define     NMP_CALLPIPE            0x54
-#define     NMP_QNmPipeSemState     0x58
+#define PI_RETRIEVE  0x00           /* FS_PATHINFO flag values */
+#define PI_SET       0x01
 
+#define SD_BEGIN     0x00           /* FS_SHUTDOWN type values */
+#define SD_COMPLETE  0x01
 
-#define FOC_NEEDEAS     0x1     /*there are need eas for this file */
+#define VUN_PASS1  0x0000           /* FS_VERIFYUNCNAME flag values */
+#define VUN_PASS2  0x0001
 
-/* values for *pFlags in FS_OPENPAGEFILE */
-#define PGIO_FIRSTOPEN 0x00000001   /* first open of page file        */
-#define PGIO_PADDR     0x00004000   /* physical addresses required    */
-#define PGIO_VADDR     0x00008000   /* 16:16 virtual address required */
-
-/* values for flag in FS_PATHINFO */
-#define PI_RETRIEVE             0x00
-#define PI_SET                  0x01
-
-/* values for usType in FS_SHUTDOWN */
-#define SD_BEGIN                0x00
-#define SD_COMPLETE             0x01
-
-/* values for flag in FS_PATHINFO */
-/* These values depend on code in GetUNCFSDFromPath */
-/* Don't change values without also changing code */
-#define VUN_PASS1                0x0000
-#define VUN_PASS2                0x0001
-#define ERROR_UNC_PATH_NOT_FOUND 0x0003   /* equals ERROR_PATH_NOT_FOUND */
-
-#pragma pack()
-
-#ifdef GCC
-#undef far
-#endif
-
-#endif /* !_FSD_H */
+#endif /* ISOFS_FSD_H_INCLUDED */
